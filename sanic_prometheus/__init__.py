@@ -99,13 +99,13 @@ def monitor(app, endpoint_type='url:1',
 
     NOTE: memory usage is not collected when when multiprocessing is enabled
     """
-    multiprocess_on = 'prometheus_multiproc_dir' in os.environ
+    multiprocess_on = 'PROMETHEUS_MULTIPROC_DIR' in os.environ
     get_endpoint = endpoint.fn_by_type(endpoint_type, get_endpoint_fn)
     memcollect_enabled = mmc_period_sec is not None
 
-    @app.listener('before_server_start')
+    @app.before_server_start
     def before_start(app, loop):
-        app.metrics = {}
+        app.config.metrics = {}
         metrics.init(
             app,
             latency_buckets, multiprocess_mode,
@@ -125,13 +125,13 @@ def monitor(app, endpoint_type='url:1',
                 metrics.after_request_handler(request, response, get_endpoint)
 
     if multiprocess_on:
-        @app.listener('after_server_stop')
+        @app.after_server_stop
         def after_stop(app, loop):
             multiprocess.mark_process_dead(os.getpid())
-    elif memcollect_enabled:
-        @app.listener('before_server_start')
+    if memcollect_enabled:
+        @app.before_server_start
         async def start_memcollect_task(app, loop):
-            app.memcollect_task = loop.create_task(
+            app.config.memcollect_task = loop.create_task(
                 metrics.periodic_memcollect_task(
                     app,
                     mmc_period_sec,
@@ -139,9 +139,9 @@ def monitor(app, endpoint_type='url:1',
                 )
             )
 
-        @app.listener('after_server_stop')
+        @app.after_server_stop
         async def stop_memcollect_task(app, loop):
-            app.memcollect_task.cancel()
+            app.config.memcollect_task.cancel()
 
     return MonitorSetup(app, metrics_path, multiprocess_on)
 
