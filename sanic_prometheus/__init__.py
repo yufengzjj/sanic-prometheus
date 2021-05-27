@@ -58,6 +58,7 @@ def monitor(app, endpoint_type='url:1',
             get_endpoint_fn=None,
             latency_buckets=None,
             mmc_period_sec=30,
+            cpu_period_sec=30,
             multiprocess_mode='all',
             metrics_path='/metrics',
             is_middleware=True,
@@ -94,6 +95,10 @@ def monitor(app, endpoint_type='url:1',
                             usage related metrics are collected.
                             Setting it to None will disable memory metrics
                             collection.
+    :param cpu_period_sec: set a period (in seconds) of how frequently cpu
+                            usage related metrics are collected.
+                            Setting it to None will disable memory metrics
+                            collection.
     :multiprocess_mode':
     :metrics_path:         path where metrics will be exposed
 
@@ -102,6 +107,7 @@ def monitor(app, endpoint_type='url:1',
     multiprocess_on = 'PROMETHEUS_MULTIPROC_DIR' in os.environ
     get_endpoint = endpoint.fn_by_type(endpoint_type, get_endpoint_fn)
     memcollect_enabled = mmc_period_sec is not None
+    cpucollect_enabled = cpu_period_sec is not None
 
     @app.before_server_start
     def before_start(app, loop):
@@ -110,6 +116,7 @@ def monitor(app, endpoint_type='url:1',
             app,
             latency_buckets, multiprocess_mode,
             memcollect_enabled=memcollect_enabled,
+            cpucollect_enabled=cpucollect_enabled,
             metrics_list=metrics_list,
         )
 
@@ -142,6 +149,21 @@ def monitor(app, endpoint_type='url:1',
         @app.after_server_stop
         async def stop_memcollect_task(app, loop):
             app.config.memcollect_task.cancel()
+
+    if cpucollect_enabled:
+        @app.before_server_start
+        async def start_cpucollect_task(app, loop):
+            app.config.cpucollect_task = loop.create_task(
+                metrics.periodic_cpucollect_task(
+                    app,
+                    cpu_period_sec,
+                    loop
+                )
+            )
+
+        @app.after_server_stop
+        async def stop_cpucollect_task(app, loop):
+            app.config.cpucollect_task.cancel()
 
     return MonitorSetup(app, metrics_path, multiprocess_on)
 

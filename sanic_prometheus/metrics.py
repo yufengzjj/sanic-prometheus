@@ -6,7 +6,7 @@ from prometheus_client import Counter, Histogram, Gauge
 
 
 def init(app, latency_buckets=None, multiprocess_mode='all',
-         memcollect_enabled=True, metrics_list=None):
+         memcollect_enabled=True, cpucollect_enabled=True, metrics_list=None):
     app.config.metrics['RQS_COUNT'] = Counter(
         'sanic_request_count',
         'Sanic Request Count',
@@ -35,7 +35,13 @@ def init(app, latency_buckets=None, multiprocess_mode='all',
             'the process running Sanic',
             multiprocess_mode=multiprocess_mode
         )
-
+    if cpucollect_enabled:
+        app.config.metrics['PROC_CPU_PERC'] = Gauge(
+            'sanic_cpu_perc',
+            'A per cent of total cpu used by ' +
+            'the process running Sanic',
+            multiprocess_mode=multiprocess_mode
+        )
     if metrics_list:
         for name, pm_metric in metrics_list:
             app.config.metrics[name] = pm_metric
@@ -47,6 +53,13 @@ async def periodic_memcollect_task(app, period_sec, loop):
         await asyncio.sleep(period_sec, loop=loop)
         app.config.metrics['PROC_RSS_MEM_BYTES'].set(p.memory_info().rss)
         app.config.metrics['PROC_RSS_MEM_PERC'].set(p.memory_percent())
+
+
+async def periodic_cpucollect_task(app, period_sec, loop):
+    p = psutil.Process()
+    while True:
+        await asyncio.sleep(period_sec, loop=loop)
+        app.config.metrics['PROC_CPU_PERC'].set(p.cpu_percent(interval=None))
 
 
 def before_request_handler(request):
